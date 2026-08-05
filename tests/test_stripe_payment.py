@@ -27,7 +27,10 @@ from payment import (
 )
 
 
-def setup_function():
+import pytest
+
+@pytest.fixture(autouse=True)
+def _clear_state():
     """Clear state before each test."""
     _payment_intents.clear()
     _ledger.clear()

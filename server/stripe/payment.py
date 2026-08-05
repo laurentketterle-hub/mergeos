@@ -100,6 +100,7 @@ def confirm_payment_intent(payment_intent_id):
     if not pi:
         raise PaymentIntentError(f"PaymentIntent {payment_intent_id} not found")
 
+    pi.transition("requires_confirmation")
     pi.transition("processing")
     pi.transition("succeeded")
 

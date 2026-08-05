@@ -33,3 +33,4 @@ bounties/
 .codex/
 .DS_Store
 .idea
+__pycache__/
