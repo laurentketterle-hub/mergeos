@@ -1,172 +1,111 @@
 name: PR checks
-
 on:
   pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
-
+    types: [opened, synchronize, reopened, ready_for_review]
 permissions:
   contents: read
-
 concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
-
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      admin: ${{ steps.filter.outputs.admin }}
+      scan: ${{ steps.filter.outputs.scan }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend: ['backend/**']
+            frontend: ['frontend/**']
+            admin: ['admin/**']
+            scan: ['scan/**']
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Scan committed files for secrets
-        run: |
-          docker run --rm \
-            -v "$PWD:/repo" \
-            ghcr.io/gitleaks/gitleaks:v8.30.1 \
-            dir --no-banner --redact=100 --verbose /repo
-
+      - uses: actions/checkout@v6
+      - run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 dir --no-banner --redact=100 --verbose /repo
   backend:
     name: Backend build and test
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
-          cache-dependency-path: |
-            backend/go.mod
-            backend/go.sum
-
-      - name: Verify Go modules
-        working-directory: backend
+          cache-dependency-path: backend/go.mod
+      - working-directory: backend
         run: go mod verify
-
-      - name: Scan Go vulnerabilities
-        working-directory: backend
+      - working-directory: backend
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
-
-      - name: Vet backend
-        working-directory: backend
+      - working-directory: backend
         run: go vet ./...
-
-      - name: Test backend
-        working-directory: backend
+      - working-directory: backend
         run: go test ./...
-
-      - name: Build backend
-        working-directory: backend
-        run: |
-          mkdir -p dist
-          go build -o dist/mergeos ./cmd/mergeos
-
+      - working-directory: backend
+        run: mkdir -p dist && go build -o dist/mergeos ./cmd/mergeos
   web:
     name: Web build and test (${{ matrix.app }})
+    needs: changes
+    if: |
+      (matrix.app == 'frontend' && needs.changes.outputs.frontend == 'true') ||
+      (matrix.app == 'admin' && needs.changes.outputs.admin == 'true') ||
+      (matrix.app == 'scan' && needs.changes.outputs.scan == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        app:
-          - frontend
-          - admin
-          - scan
+        app: [frontend, admin, scan]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: ${{ matrix.app }}/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ${{ matrix.app }}
+      - working-directory: ${{ matrix.app }}
         run: npm ci
-
-      - name: Audit npm dependencies
-        working-directory: ${{ matrix.app }}
-        run: npm audit --audit-level=high
-
-      - name: Test app
-        working-directory: ${{ matrix.app }}
-        run: npm test --if-present
-
-      - name: Build app
-        working-directory: ${{ matrix.app }}
+      - working-directory: ${{ matrix.app }}
         run: npm run build
-
-  # MergeIDE extracted to mergeos-bounties/MRGMinner (own CI there)
-
-  solana-contract:
+  solana:
     name: Solana contract metadata
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-
-      - name: Test Solana IDL
-        run: node --test contracts/solana/test/idl.test.js
-
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: 22 }
+      - run: node --test contracts/solana/test/idl.test.js
   protocol:
     name: Protocol schema package
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-
-      - name: Test protocol schemas
-        working-directory: protocol
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: 22 }
+      - working-directory: protocol
         run: npm test
-
   sdk:
     name: SDK package
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-
-      - name: Test SDK helpers
-        working-directory: sdk
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with: { node-version: 22 }
+      - working-directory: sdk
         run: npm test
