@@ -78,6 +78,12 @@ jobs:
           cache-dependency-path: ${{ matrix.app }}/package-lock.json
       - working-directory: ${{ matrix.app }}
         run: npm ci
+      - name: Audit npm dependencies
+        working-directory: ${{ matrix.app }}
+        run: npm audit --audit-level=high
+      - name: Test app
+        working-directory: ${{ matrix.app }}
+        run: npm test --if-present
       - working-directory: ${{ matrix.app }}
         run: npm run build
   solana:
