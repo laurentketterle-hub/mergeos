@@ -60,8 +60,8 @@ function detectTests(dir) {
     }
     if (files.includes('go.mod')) cmds.push({ n:'go test', c:'go test ./...', d:dir });
     if (files.includes('pyproject.toml')||files.includes('setup.py')||files.includes('setup.cfg'))
-      cmds.push({ n:'pytest', c:'python -m pytest tests/ -v --tb=short 2>&1 2>&1; EXIT=$?; if [ $EXIT -ne 0 ]; then echo "no tests found or tests failed (exit=$EXIT)"; fi', d:dir });
-    if (files.includes('Cargo.toml')) cmds.push({ n:'cargo test', c:'cargo test 2>&1 2>&1; EXIT=$?; if [ $EXIT -ne 0 ]; then echo "no tests found or tests failed (exit=$EXIT)"; fi', d:dir });
+      cmds.push({ n:'pytest', c:'python -m pytest tests/ -v --tb=short 2>&1; EXIT=$?; if [ $EXIT -ne 0 ]; then echo "no tests found or tests failed (exit=$EXIT)"; false; fi', d:dir });
+    if (files.includes('Cargo.toml')) cmds.push({ n:'cargo test', c:'cargo test 2>&1; EXIT=$?; if [ $EXIT -ne 0 ]; then echo "no tests found or tests failed (exit=$EXIT)"; false; fi', d:dir });
   } catch(e) {}
   return cmds;
 }
