@@ -51,13 +51,13 @@ jobs:
           echo "=== Checking for test artifacts ==="
           HAS_TESTS=false
           if [ -f backend/go.mod ]; then
-            cd backend && go test ./... -json > ../test-results-backend.json 2>&1 || true
+            cd backend && if go test ./... -json > ../test-results-backend.json 2>&1; then echo "Backend tests: PASSED"; else echo "Backend tests: FAILED"; TESTS_PASSED=false; fi
             cd ..
             HAS_TESTS=true
             echo "Backend tests executed"
           fi
           if [ -f frontend/package.json ]; then
-            cd frontend && npm test -- --json --outputFile=../test-results-frontend.json 2>&1 || true
+            cd frontend && if npm test -- --json --outputFile=../test-results-frontend.json 2>&1; then echo "Frontend tests: PASSED"; else echo "Frontend tests: FAILED"; TESTS_PASSED=false; fi
             cd ..
             HAS_TESTS=true
             echo "Frontend tests executed"
