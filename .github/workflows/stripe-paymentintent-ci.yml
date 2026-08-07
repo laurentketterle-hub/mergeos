@@ -1,0 +1,36 @@
+name: Stripe PaymentIntent CI
+
+on:
+  pull_request:
+    paths:
+      - "backend/internal/core/payments.go"
+      - "backend/internal/core/payment_order_intents.go"
+      - "backend/internal/core/migrations/018_payment_order_intents.sql"
+
+permissions:
+  contents: read
+
+jobs:
+  stripe-backend:
+    name: Stripe backend check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.mod
+
+      - name: Vet Stripe payment module
+        working-directory: backend
+        run: go vet ./internal/core/
+
+      - name: Test Stripe payment flow
+        working-directory: backend
+        run: go test ./internal/core/ -run "Stripe" -v -count=1
