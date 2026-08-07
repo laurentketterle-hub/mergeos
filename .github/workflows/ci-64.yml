@@ -1,0 +1,98 @@
+name: CI — Verify PR Bounty Evidence (#64)
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ci-64-pr-verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify-evidence:
+    name: Verify bounty evidence
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.labels.*.name, 'bounty') || contains(github.event.pull_request.labels.*.name, 'evidence: missing') || contains(github.event.pull_request.labels.*.name, 'qa')
+    timeout-minutes: 15
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify evidence directory exists
+        id: evidence-check
+        run: |
+          echo "=== Checking for evidence files ==="
+          if [ -d docs/evidence ]; then
+            EVIDENCE_COUNT=$(find docs/evidence -type f | wc -l)
+            echo "evidence_count=$EVIDENCE_COUNT" >> $GITHUB_OUTPUT
+            echo "Evidence directory found with $EVIDENCE_COUNT file(s)"
+            find docs/evidence -type f | sort
+          else
+            echo "evidence_count=0" >> $GITHUB_OUTPUT
+            echo "::warning::No docs/evidence directory found"
+          fi
+
+      - name: Check for test results
+        id: test-check
+        run: |
+          echo "=== Checking for test artifacts ==="
+          HAS_TESTS=false
+          if [ -f backend/go.mod ]; then
+            cd backend && go test ./... -json > ../test-results-backend.json 2>&1 || true
+            cd ..
+            HAS_TESTS=true
+            echo "Backend tests executed"
+          fi
+          if [ -f frontend/package.json ]; then
+            cd frontend && npm test -- --json --outputFile=../test-results-frontend.json 2>&1 || true
+            cd ..
+            HAS_TESTS=true
+            echo "Frontend tests executed"
+          fi
+          echo "has_tests=$HAS_TESTS" >> $GITHUB_OUTPUT
+
+      - name: Generate verification report
+        if: always()
+        run: |
+          echo "## PR Verification Report (#64)" > verification-report.md
+          echo "" >> verification-report.md
+          echo "**PR:** #${{ github.event.pull_request.number }}" >> verification-report.md
+          echo "**Title:** ${{ github.event.pull_request.title }}" >> verification-report.md
+          echo "**Author:** ${{ github.event.pull_request.user.login }}" >> verification-report.md
+          echo "" >> verification-report.md
+          echo "### Evidence Check" >> verification-report.md
+          echo "- Evidence files found: ${{ steps.evidence-check.outputs.evidence_count }}" >> verification-report.md
+          echo "" >> verification-report.md
+          echo "### Test Check" >> verification-report.md
+          echo "- Tests available: ${{ steps.test-check.outputs.has_tests }}" >> verification-report.md
+          echo "" >> verification-report.md
+          echo "### Labels" >> verification-report.md
+          echo "${{ toJson(github.event.pull_request.labels.*.name) }}" >> verification-report.md
+          cat verification-report.md
+
+      - name: Comment PR with verification report
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('verification-report.md', 'utf8');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: report
+            });
