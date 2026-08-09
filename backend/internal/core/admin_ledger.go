@@ -10,6 +10,14 @@ import (
 	"strings"
 )
 
+// adminBountyTypeRewardMRG maps supported bounty types to their canonical reward amounts.
+var adminBountyTypeRewardMRG = map[string]int64{
+	"future-small":  25,
+	"future-medium": 50,
+	"bug-large":     100,
+	"major-feature": 200,
+}
+
 func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.requireAdmin(w, r); !ok {
 		return
@@ -29,6 +37,14 @@ func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// Validate that the reward amount matches the bounty type preset.
+	if expected, ok := adminBountyTypeRewardMRG[bountyType]; ok && rewardMRG != expected {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("reward_mrg %d does not match bounty_type %q (expected %d)", rewardMRG, bountyType, expected))
+		return
+	}
+
 	workerID := normalizeAdminCreditWorkerID(req.WorkerID)
 	if workerID == "" {
 		writeError(w, http.StatusBadRequest, "worker_id is required")
@@ -39,6 +55,15 @@ func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// When a PR URL is provided, verify the PR before creating the credit.
+	if prURL := strings.TrimSpace(req.PRURL); prURL != "" {
+		if verifyErr := s.verifyPRForManualCredit(r, prURL, workerID); verifyErr != nil {
+			writeError(w, http.StatusBadRequest, verifyErr.Error())
+			return
+		}
+	}
+
 	entry, err := s.store.AddManualCredit(workerID, rewardMRG, reference)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -54,9 +79,14 @@ func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request)
 	var commentURL string
 	var commentError string
 	if prURL := strings.TrimSpace(req.PRURL); prURL != "" {
-		if target, err := parseGitHubPullURL(prURL); err == nil {
+		target, err := parseGitHubPullURL(prURL)
+		if err != nil {
+			commentError = "failed to parse PR URL: " + err.Error()
+		} else {
 			client, ghErr := newAdminGitHubClient(s.cfg, false)
-			if ghErr == nil {
+			if ghErr != nil {
+				commentError = "github client setup failed: " + ghErr.Error()
+			} else {
 				pullNumber := target.IssueNumber
 				cURL, cErr := client.commentPullRequest(r.Context(), target, pullNumber, commentBody)
 				if cErr == nil {
@@ -81,6 +111,46 @@ func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request)
 		CommentError:   commentError,
 		CommentBody:    commentBody,
 	})
+}
+
+// verifyPRForManualCredit fetches the pull request from GitHub and ensures it
+// satisfies the minimum requirements before a manual credit can be issued:
+//   - The PR exists and is open or merged (not closed without merge).
+//   - If the PR is still open, it must be mergeable (not dirty/conflicting).
+//   - The PR author must match the credited worker.
+func (s *Server) verifyPRForManualCredit(r *http.Request, prURL, workerID string) error {
+	target, err := parseGitHubPullURL(prURL)
+	if err != nil {
+		return fmt.Errorf("invalid PR URL: %w", err)
+	}
+	client, err := newAdminGitHubClient(s.cfg, false)
+	if err != nil {
+		return fmt.Errorf("github client unavailable: %w", err)
+	}
+	pull, err := client.pullRequest(r.Context(), target, target.IssueNumber)
+	if err != nil {
+		return fmt.Errorf("failed to fetch PR: %w", err)
+	}
+	if pull.Draft {
+		return errors.New("draft pull requests cannot receive manual credit")
+	}
+	if !pull.Merged && !strings.EqualFold(pull.State, "open") {
+		return errors.New("pull request is closed without being merged")
+	}
+	if !pull.Merged && strings.EqualFold(pull.MergeableState, "dirty") {
+		return errors.New("pull request has merge conflicts and cannot receive manual credit until resolved")
+	}
+	if pull.Merged && pull.Author == "" {
+		return errors.New("merged pull request has no identifiable author")
+	}
+	// If the PR is merged, the credited worker should be derived from the PR author.
+	if pull.Merged {
+		expectedWorker, _ := githubWorkerID(pull.Author)
+		if expectedWorker != "" && workerID != expectedWorker {
+			return fmt.Errorf("worker_id %q does not match merged PR author %q", workerID, pull.Author)
+		}
+	}
+	return nil
 }
 
 func selectedManualCreditRewardMRG(req AdminManualCreditRequest) int64 {
