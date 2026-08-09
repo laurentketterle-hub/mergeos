@@ -224,6 +224,23 @@ func adminBountyTitle(value string) string {
 	}
 }
 
+// adminBountyRewardMRG returns the canonical MRG reward for a validated bounty type.
+// The documented presets are: future-small=25, future-medium=50, bug-large=100, major-feature=200.
+func adminBountyRewardMRG(bountyType string) int64 {
+	switch bountyType {
+	case "future-small":
+		return 25
+	case "future-medium":
+		return 50
+	case "bug-large":
+		return 100
+	case "major-feature":
+		return 200
+	default:
+		return 0
+	}
+}
+
 func adminTasksURL(cfg Config) string {
 	domain := strings.TrimSpace(cfg.AdminDomain)
 	if domain == "" {

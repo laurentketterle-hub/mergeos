@@ -721,18 +721,30 @@ type AdminManualCreditRequest struct {
 	Note        string `json:"note,omitempty"`
 }
 
+// AdminManualCreditPRVerification holds PR verification results for manual credit requests.
+type AdminManualCreditPRVerification struct {
+	PRURL          string                   `json:"pr_url"`
+	State          string                   `json:"state,omitempty"`
+	Merged         bool                     `json:"merged"`
+	MergeableState string                   `json:"mergeable_state,omitempty"`
+	Title          string                   `json:"title,omitempty"`
+	Labels         []string                 `json:"labels,omitempty"`
+	Readiness      AdminPullRequestReadiness `json:"readiness,omitempty"`
+}
+
 type AdminManualCreditResponse struct {
-	LedgerEntry    LedgerEntry `json:"ledger_entry"`
-	WorkerID       string      `json:"worker_id"`
-	RewardMRG      int64       `json:"reward_mrg"`
-	BountyType     string      `json:"bounty_type"`
-	CreditURL      string      `json:"credit_url,omitempty"`
-	LedgerSequence int64       `json:"ledger_sequence,omitempty"`
-	ProofHash      string      `json:"proof_hash,omitempty"`
-	ScanURL        string      `json:"scan_url,omitempty"`
-	CommentURL     string      `json:"comment_url,omitempty"`
-	CommentError   string      `json:"comment_error,omitempty"`
-	CommentBody    string      `json:"comment_body,omitempty"`
+	LedgerEntry    LedgerEntry                         `json:"ledger_entry"`
+	WorkerID       string                              `json:"worker_id"`
+	RewardMRG      int64                               `json:"reward_mrg"`
+	BountyType     string                              `json:"bounty_type"`
+	CreditURL      string                              `json:"credit_url,omitempty"`
+	LedgerSequence int64                               `json:"ledger_sequence,omitempty"`
+	ProofHash      string                              `json:"proof_hash,omitempty"`
+	ScanURL        string                              `json:"scan_url,omitempty"`
+	CommentURL     string                              `json:"comment_url,omitempty"`
+	CommentError   string                              `json:"comment_error,omitempty"`
+	CommentBody    string                              `json:"comment_body,omitempty"`
+	PRVerification *AdminManualCreditPRVerification `json:"pr_verification,omitempty"`
 }
 
 type StatusResponse struct {

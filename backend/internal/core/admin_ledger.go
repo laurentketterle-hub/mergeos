@@ -29,6 +29,13 @@ func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Verify amount matches bounty type preset; reject mismatches
+	expectedReward := adminBountyRewardMRG(bountyType)
+	if rewardMRG != expectedReward {
+		writeError(w, http.StatusBadRequest,
+			fmt.Sprintf("reward_mrg %d does not match bounty_type %s (expected %d)", rewardMRG, bountyType, expectedReward))
+		return
+	}
 	workerID := normalizeAdminCreditWorkerID(req.WorkerID)
 	if workerID == "" {
 		writeError(w, http.StatusBadRequest, "worker_id is required")
@@ -39,6 +46,45 @@ func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+
+	// Verify PR is merged and meets star/evidence policy before credit
+	var prVerification *AdminManualCreditPRVerification
+	if prURL := strings.TrimSpace(req.PRURL); prURL != "" {
+		prVerification = &AdminManualCreditPRVerification{PRURL: prURL}
+		if target, err := parseGitHubPullURL(prURL); err == nil {
+			client, ghErr := newAdminGitHubClient(s.cfg, false)
+			if ghErr != nil {
+				writeError(w, http.StatusBadRequest,
+					fmt.Sprintf("cannot verify PR: GitHub client setup failed: %v", ghErr))
+				return
+			}
+			pull, pullErr := client.pullRequest(r.Context(), target, target.IssueNumber)
+			if pullErr != nil {
+				writeError(w, http.StatusBadRequest,
+					fmt.Sprintf("cannot fetch PR %s: %v", prURL, pullErr))
+				return
+			}
+			prVerification.State = pull.State
+			prVerification.Merged = pull.Merged
+			prVerification.MergeableState = pull.MergeableState
+			prVerification.Labels = pull.Labels
+			prVerification.Title = pull.Title
+
+			// Check merge verification policy
+			pseudoTask := &Task{} // readiness check does not require a real task for manual credits
+			readiness := adminPullRequestReadiness(pseudoTask, pull)
+			prVerification.Readiness = readiness
+			if len(readiness.Blockers) > 0 {
+				writeError(w, http.StatusBadRequest,
+					fmt.Sprintf("PR %s cannot be credited: %s", prURL, strings.Join(readiness.Blockers, "; ")))
+				return
+			}
+		} else {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("invalid PR URL: %v", err))
+			return
+		}
+	}
+
 	entry, err := s.store.AddManualCredit(workerID, rewardMRG, reference)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -56,7 +102,9 @@ func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request)
 	if prURL := strings.TrimSpace(req.PRURL); prURL != "" {
 		if target, err := parseGitHubPullURL(prURL); err == nil {
 			client, ghErr := newAdminGitHubClient(s.cfg, false)
-			if ghErr == nil {
+			if ghErr != nil {
+				commentError = fmt.Sprintf("GitHub client setup failed: %v", ghErr)
+			} else {
 				pullNumber := target.IssueNumber
 				cURL, cErr := client.commentPullRequest(r.Context(), target, pullNumber, commentBody)
 				if cErr == nil {
@@ -65,6 +113,8 @@ func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request)
 					commentError = cErr.Error()
 				}
 			}
+		} else {
+			commentError = fmt.Sprintf("invalid PR URL: %v", err)
 		}
 	}
 
@@ -80,6 +130,7 @@ func (s *Server) createAdminLedgerCredit(w http.ResponseWriter, r *http.Request)
 		CommentURL:     commentURL,
 		CommentError:   commentError,
 		CommentBody:    commentBody,
+		PRVerification: prVerification,
 	})
 }
 
