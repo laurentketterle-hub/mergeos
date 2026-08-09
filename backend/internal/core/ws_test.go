@@ -652,7 +652,7 @@ func TestWebSocketBroadcastsAdminManualCreditLedgerEvent(t *testing.T) {
 	_ = readWebSocketTextFrame(t, reader)
 	_ = readWebSocketTextFrame(t, reader)
 
-	body := strings.NewReader(`{"worker_id":"github:realtime-reviewer","reward_mrg":50,"bounty_type":"future-small","pr_url":"https://github.com/mergeos-bounties/mergeos/pull/777","pr_title":"Realtime ledger proof"}`)
+	body := strings.NewReader(`{"worker_id":"github:realtime-reviewer","reward_mrg":50,"bounty_type":"future-medium","reference":"realtime-ledger-proof","pr_title":"Realtime ledger proof"}`)
 	req, err := http.NewRequest(http.MethodPost, httpServer.URL+"/api/admin/ledger/credits", body)
 	if err != nil {
 		t.Fatal(err)

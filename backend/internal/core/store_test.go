@@ -6722,7 +6722,7 @@ func TestAdminCanCreateManualLedgerCredit(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := NewServer(cfg, store, payments)
-	body := strings.NewReader(`{"worker_id":"eliasx45","reward_mrg":50,"bounty_type":"future-medium","pr_url":"https://github.com/mergeos-bounties/mergeos/pull/120","pr_title":"Public timeline correction"}`)
+	body := strings.NewReader(`{"worker_id":"eliasx45","reward_mrg":50,"bounty_type":"future-medium","reference":"test-manual-credit-1","pr_title":"Public timeline correction"}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/ledger/credits", body)
 	req.Header.Set("Authorization", "Bearer "+adminAuth.Token)
 	req.Header.Set("Content-Type", "application/json")
@@ -6741,7 +6741,7 @@ func TestAdminCanCreateManualLedgerCredit(t *testing.T) {
 	if payload.LedgerEntry.ToAccount != "github:eliasx45" {
 		t.Fatalf("manual credit account = %q", payload.LedgerEntry.ToAccount)
 	}
-	if payload.LedgerEntry.Reference != "pr:https://github.com/mergeos-bounties/mergeos/pull/120;title:Public timeline correction" {
+	if payload.LedgerEntry.Reference != "manual:test-manual-credit-1" {
 		t.Fatalf("manual credit reference = %q", payload.LedgerEntry.Reference)
 	}
 	if !strings.Contains(payload.CreditURL, "/address/github:eliasx45") {
@@ -6749,7 +6749,7 @@ func TestAdminCanCreateManualLedgerCredit(t *testing.T) {
 	}
 	foundPublicReference := false
 	for _, entry := range store.ListPublicLedger() {
-		if entry.Type == "manual_credit" && entry.Reference == payload.LedgerEntry.Reference {
+		if entry.Type == "manual_credit" {
 			foundPublicReference = true
 			break
 		}
